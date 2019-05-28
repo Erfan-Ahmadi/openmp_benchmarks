@@ -4,14 +4,21 @@
 #include <chrono>
 #include <vector>
 
+//#define MEM_STATIC
+
 // Constants
 typedef double my_type;
 auto constexpr num_runs = 50;
-auto constexpr n = 2048;
+auto constexpr x = 512;
+auto constexpr n = x * x;
+auto constexpr static_size = 64;
 
-int initialize_array(my_type**& matrix)
+#ifdef MEM_STATIC
+int initialize_array(my_type matrix[n][n])
+#else
+int initialize_array(my_type*& matrix)
+#endif
 {
-	matrix = (my_type * *)malloc(sizeof(my_type*) * n);
 	if (matrix == nullptr)
 	{
 		std::cout << "Could not allocate memory for matrix!";
@@ -19,18 +26,7 @@ int initialize_array(my_type**& matrix)
 	}
 
 	for (auto i = 0; i < n; ++i)
-	{
-		matrix[i] = (my_type*)malloc(sizeof(my_type) * n);
-		if (matrix[i] == nullptr)
-		{
-			std::cout << "Could not allocate memory for matrix[" << i << "] !";
-			return 1;
-		}
-	}
-
-	for (auto i = 0; i < n; ++i)
-		for (auto j = 0; j < n; ++j)
-			matrix[i][j] = rand() % 10000;
+			matrix[i] = rand() % 10000;
 
 	return 0;
 }
@@ -38,7 +34,13 @@ int initialize_array(my_type**& matrix)
 int main()
 {
 	srand(time(NULL));
-	my_type** matrix = nullptr;
+
+#ifdef MEM_STATIC
+	my_type matrix[n][n];
+#else
+	my_type* matrix = nullptr;
+	matrix = (my_type*)malloc(sizeof(my_type) * n);
+#endif
 
 #pragma region Initialization
 	{
@@ -78,17 +80,16 @@ int main()
 			avg = 0;
 
 			for (auto i = 0; i < n; ++i)
-				for (auto j = 0; j < n; ++j)
-					sum += matrix[i][j];
+					sum += matrix[i];
 
 			const auto t1 = std::chrono::high_resolution_clock::now();
 			sum_duration += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
 		}
 
-		avg = sum / (n * n);
+		avg = sum / (n);
 
 		const auto duration_ms = (sum_duration / num_runs) / 1000.0;
-		std::cout << "		Average Duration =  " << duration_ms << "(ms) - ";
+		std::cout << "Average Duration =  " << duration_ms << "(ms) - ";
 
 		std::cout << "Avg =  " << avg;
 		std::cout << std::endl;
@@ -120,56 +121,12 @@ int main()
 
 				double _temp_sum = 0;
 				for (int i = (id / num_threads) * n; i < ((id + 1) / num_threads) * n; ++i)
-					for (int j = 0; j < n; ++j)
-						_temp_sum += matrix[i][j];
+						_temp_sum += matrix[i];
 #pragma omp atomic
 				sum += _temp_sum;
 			}
 
-			avg = sum / (n * n);
-			const auto t1 = std::chrono::high_resolution_clock::now();
-			sum_duration += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
-		}
-
-		const auto duration_ms = (sum_duration / num_runs) / 1000.0;
-		std::cout << "	Average Duration =  " << duration_ms << "(ms) - ";
-
-		std::cout << "Avg =  " << avg;
-		std::cout << std::endl;
-	}
-
-#pragma endregion
-
-	std::cout << "---------------------------" << std::endl;
-
-	// HUGE Performance Loss than prev method because of CPU caching
-#pragma region Simple Parallel (For Exchange)
-
-	{
-		std::cout << "Simple Parallel (For Exchange) -		";
-
-		double sum_duration = 0;
-
-		for (auto r = 0; r < num_runs; ++r)
-		{
-			const auto t0 = std::chrono::high_resolution_clock::now();
-
-			sum = 0;
-			avg = 0;
-
-#pragma omp parallel
-			{
-				const auto id = omp_get_thread_num();
-
-				double _temp_sum = 0;
-				for (int j = 0; j < n; ++j)
-					for (int i = (id / num_threads) * n; i < ((id + 1) / num_threads) * n; ++i)
-						_temp_sum += matrix[i][j];
-#pragma omp atomic
-				sum += _temp_sum;
-			}
-
-			avg = sum / (n * n);
+			avg = sum / (n);
 			const auto t1 = std::chrono::high_resolution_clock::now();
 			sum_duration += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
 		}
@@ -181,7 +138,7 @@ int main()
 		std::cout << std::endl;
 	}
 
-#pragma endregion 
+#pragma endregion
 
 	std::cout << "---------------------------" << std::endl;
 
@@ -201,16 +158,15 @@ int main()
 
 #pragma omp parallel for reduction(+: sum)
 			for (int i = 0; i < n; ++i)
-				for (int j = 0; j < n; ++j)
-					sum += matrix[i][j];
+					sum += matrix[i];
 
-			avg = sum / (n * n);
+			avg = sum / (n);
 			const auto t1 = std::chrono::high_resolution_clock::now();
 			sum_duration += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
 		}
 
 		const auto duration_ms = (sum_duration / num_runs) / 1000.0f;
-		std::cout << "	Average Duration =  " << duration_ms << "(ms) - ";
+		std::cout << "Average Duration =  " << duration_ms << "(ms) - ";
 
 		std::cout << "Avg =  " << avg;
 		std::cout << std::endl;
@@ -240,14 +196,13 @@ int main()
 				const auto id = omp_get_thread_num();
 
 				for (int i = (id / num_threads) * n; i < ((id + 1) / num_threads) * n; ++i)
-					for (int j = 0; j < n; ++j)
-						sums[id] += matrix[i][j];
+						sums[id] += matrix[i];
 			}
 
 
 			for (auto s : sums) sum += s;
 
-			avg = sum / (n * n);
+			avg = sum / (n);
 			const auto t1 = std::chrono::high_resolution_clock::now();
 			sum_duration += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
 		}
@@ -266,7 +221,7 @@ int main()
 #pragma region Parallel For Reduction Static Schedule
 
 	{
-		std::cout << "Parallel For Reduction Static (512) -		";
+		std::cout << "Parallel For Reduction Static (" << static_size << ") - ";
 
 		double sum_duration = 0;
 
@@ -277,12 +232,11 @@ int main()
 			sum = 0;
 			avg = 0;
 
-#pragma omp parallel for reduction(+: sum) schedule(static, 512)
+#pragma omp parallel for reduction(+: sum) schedule(static, static_size)
 			for (int i = 0; i < n; ++i)
-				for (int j = 0; j < n; ++j)
-					sum += matrix[i][j];
+					sum += matrix[i];
 
-			avg = sum / (n * n);
+			avg = sum / (n);
 			const auto t1 = std::chrono::high_resolution_clock::now();
 			sum_duration += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
 		}
@@ -314,10 +268,9 @@ int main()
 
 #pragma omp parallel for reduction(+: sum) schedule(dynamic)
 			for (int i = 0; i < n; ++i)
-				for (int j = 0; j < n; ++j)
-					sum += matrix[i][j];
+					sum += matrix[i];
 
-			avg = sum / (n * n);
+			avg = sum / (n);
 			const auto t1 = std::chrono::high_resolution_clock::now();
 			sum_duration += std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count();
 		}
@@ -335,14 +288,17 @@ int main()
 
 	std::cout << "Max Threads Num = " << omp_get_max_threads() << std::endl << std::endl;
 	std::cout << "Number of Threads = " << num_threads << std::endl << std::endl;
-	std::cout << "2D Array Size = " << n << " * " << n << std::endl << std::endl;
+	std::cout << "2D Array Size = " << x << " * " << x << std::endl << std::endl;
 	std::cout << "Number Of Each Method Run = " << num_runs << std::endl << std::endl;
 
 	std::cout << "---------------------------" << std::endl;
 
 	std::cout << "Profiling Finished Successfully";
 
+#ifndef MEM_STATIC
 	free(matrix);
+#endif
+
 	std::cin >> sum;
 
 	return 0;
